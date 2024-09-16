@@ -1,16 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { PrismaService } from '@/infra/database/prisma/prisma.service'
 import {
+  BadRequestException,
   Body,
+  ConflictException,
   Controller,
   HttpCode,
   Post,
-  ConflictException,
   UsePipes,
 } from '@nestjs/common'
-import { hash } from 'bcryptjs'
 import { z } from 'zod'
 import { ZodValidationPipe } from '../pipes/zod-validation-pipe'
+import { RegisterStudentUseCase } from '@/domain/forum/application/use-cases/register-student'
+import { StudentAlreadyExistsError } from '@/domain/forum/application/use-cases/errors/student-already-exists-error'
+import { Public } from '@/infra/auth/public'
 
 const createAccountBodySchema = z.object({
   name: z.string(),
@@ -21,8 +23,9 @@ const createAccountBodySchema = z.object({
 type CreateAccountBodySchema = z.infer<typeof createAccountBodySchema>
 
 @Controller('/accounts')
+@Public()
 export class CreateAccountController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private registerStudent: RegisterStudentUseCase) {}
 
   @Post()
   @HttpCode(201)
@@ -30,24 +33,16 @@ export class CreateAccountController {
   async handle(@Body() body: CreateAccountBodySchema) {
     const { name, email, password } = body
 
-    const userWithSameEmail = await this.prisma.user.findUnique({
-      where: {
-        email,
-      },
-    })
+    const result = await this.registerStudent.execute({ name, email, password })
 
-    if (userWithSameEmail) {
-      throw new ConflictException(
-        'User with same e-mail address already exists.',
-      )
+    if (result.isLeft()) {
+      const error = result.value
+      switch (error.constructor) {
+        case StudentAlreadyExistsError:
+          throw new ConflictException(error.message)
+        default:
+          throw new BadRequestException(error.message)
+      }
     }
-
-    await this.prisma.user.create({
-      data: {
-        name,
-        email,
-        password: await hash(password, 8),
-      },
-    })
   }
 }
