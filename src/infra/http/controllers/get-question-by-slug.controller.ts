@@ -10,8 +10,6 @@ export class GetQuestionBySlugController {
   async handle(@Param('slug') slug: string) {
     const result = await this.getQuestionBySlug.execute({ slug })
 
-    console.log(result)
-
     if (result.isLeft()) throw new BadRequestException()
 
     const question = QuestionDetailsPresenter.toHTTP(result.value.question)
